@@ -3,46 +3,39 @@ import User from "../models/User.js";
 
 // Create or get one-to-one chat
 export const accessChat = async (req, res) => {
-  const { userId } = req.body;
+  const { userId, receiverUserId } = req.body;
 
-  if (!userId) {
-    return res.status(400).json({ message: "UserId param not sent" });
-  }
-
-  let isChat = await Chat.find({
-    isGroupChat: false,
-    $and: [
-      { users: { $elemMatch: { $eq: req.user._id } } },
-      { users: { $elemMatch: { $eq: userId } } },
-    ],
-  })
-    .populate("users", "-password")
-    .populate("latestMessage");
-
-  isChat = await User.populate(isChat, {
-    path: "latestMessage.sender",
-    select: "username email",
-  });
-
-  if (isChat.length > 0) {
-    res.json(isChat[0]);
-  } else {
-    const chatData = {
-      chatName: "sender",
+  try {
+    // Check if chat between the two users already exists
+    let chat = await Chat.findOne({
       isGroupChat: false,
-      users: [req.user._id, userId],
+      users: { $all: [userId, receiverUserId] },
+    })
+      .populate("users", "-password")
+      .populate("latestMessage");
+
+    // If chat exists, return it
+    if (chat) {
+      return res.status(200).json(chat);
+    }
+
+    // If chat does not exist, create new one
+    const newChat = {
+      chatName: "sender", // You can adjust this as needed
+      isGroupChat: false,
+      users: [userId, receiverUserId], // Add both users here
     };
 
-    try {
-      const createdChat = await Chat.create(chatData);
-      const fullChat = await Chat.findOne({ _id: createdChat._id }).populate(
-        "users",
-        "-password"
-      );
-      res.status(200).json(fullChat);
-    } catch (error) {
-      res.status(400).json({ message: error.message });
-    }
+    const createdChat = await Chat.create(newChat);
+
+    const fullChat = await Chat.findOne({ _id: createdChat._id }).populate(
+      "users",
+      "-password"
+    );
+
+    res.status(200).json(fullChat);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 };
 
